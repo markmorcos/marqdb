@@ -13,9 +13,18 @@ static void write_header(BufferPool* bp, HeapFile* hf) {
   bp_unpin_page(bp, hf->header_page_id, true);
 }
 
-HeapFile heap_open(BufferPool* bp) {
+void heap_bootstrap(BufferPool* bp, uint32_t header_pid, uint32_t first_data_pid) {
+  HeapFile hf = {
+    .header_page_id = header_pid,
+    .first_data_pid = first_data_pid,
+    .last_data_pid  = first_data_pid
+  };
+  write_header(bp, &hf);
+}
+
+HeapFile heap_open(BufferPool* bp, uint32_t header_pid) {
   HeapFile hf = {0};
-  hf.header_page_id = 0;
+  hf.header_page_id = header_pid;
 
   long size = disk_file_size(bp->dm);
 

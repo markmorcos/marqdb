@@ -29,14 +29,27 @@ typedef struct {
 } RID;
 
 /**
+ * @brief Initializes the heap file's header page.
+ * 
+ * This function sets up the header page with pointers to the first and last
+ * data pages in the heap file.
+ * 
+ * @param bp Pointer to the BufferPool for buffer management
+ * @param header_pid Page ID of the heap file's header page
+ * @param first_data_pid Page ID of the first data page in the heap file
+ */
+void heap_bootstrap(BufferPool* bp, uint32_t header_pid, uint32_t first_data_pid);
+
+/**
  * @brief Opens or creates a heap file on the given BufferPool.
  * 
  * If the heap file does not exist, it will be created with an initial header page.
  * 
  * @param bp Pointer to the BufferPool for buffer management
+ * @param header_pid Page ID of the heap file's header page
  * @return HeapFile structure representing the opened or created heap file
  */
-HeapFile heap_open(BufferPool* bp);
+HeapFile heap_open(BufferPool* bp, uint32_t header_pid);
 
 /**
  * @brief Inserts a record into the heap file.

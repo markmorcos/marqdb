@@ -1,0 +1,92 @@
+#include <stdio.h>
+#include <string.h>
+#include <ctype.h>
+#include "catalog.h"
+#include "heap.h"
+#include "buffer.h"
+
+static void trim(char* s) {
+  char* p = s;
+  while (isspace((unsigned char)*p)) p++;
+  if (p != s) memmove(s, p, strlen(p)+1);
+
+  size_t n = strlen(s);
+  while (n > 0 && isspace((unsigned char)s[n-1])) s[--n] = 0;
+}
+
+static int starts_with(const char* s, const char* pref) {
+  return strncasecmp(s, pref, strlen(pref)) == 0;
+}
+
+void repl(BufferPool* bp) {
+  Catalog cat = catalog_open(bp);
+  if (cat.heap_header_pid == INVALID_PID) return;
+
+  HeapFile hf = heap_open(bp, cat.heap_header_pid);
+
+  char line[512];
+
+  printf("marqdb> ");
+  while (fgets(line, sizeof(line), stdin)) {
+    trim(line);
+    if (line[0] == 0) { printf("marqdb> "); continue; }
+
+    if (strcmp(line, ".exit") == 0 || strcmp(line, ".quit") == 0) {
+      break;
+    }
+
+    if (starts_with(line, "create table")) {
+      printf("OK (single-table MVP)\n");
+      printf("marqdb> ");
+      continue;
+    }
+
+    if (starts_with(line, "insert into")) {
+      char* values = strcasestr(line, "values");
+      if (!values) { printf("Parse error.\nmarqdb> "); continue; }
+
+      char* lpar = strchr(values, '(');
+      char* rpar = strrchr(values, ')');
+      if (!lpar || !rpar || rpar <= lpar) { printf("Parse error.\nmarqdb> "); continue; }
+
+      char inside[256];
+      size_t len = (size_t)(rpar - lpar - 1);
+      if (len >= sizeof(inside)) len = sizeof(inside)-1;
+      memcpy(inside, lpar + 1, len);
+      inside[len] = 0;
+      trim(inside);
+
+      if (inside[0] == '\'' || inside[0] == '"') {
+        size_t m = strlen(inside);
+        if (m >= 2) {
+          memmove(inside, inside+1, m-2);
+          inside[m-2] = 0;
+        }
+      }
+
+      heap_insert(bp, &hf, (uint8_t*)inside, (uint16_t)(strlen(inside) + 1));
+      printf("OK\n");
+      printf("marqdb> ");
+      continue;
+    }
+
+    if (starts_with(line, "select *")) {
+      RID cur = { .page_id = INVALID_PID, .slot_id = 0 };
+      uint8_t* out;
+      uint16_t len;
+      int count = 0;
+
+      while (heap_scan_next(bp, &hf, &cur, &out, &len)) {
+        printf("%s\n", (char*)out);
+        count++;
+        bp_unpin_page(bp, cur.page_id, false);
+      }
+
+      printf("(%d rows)\n", count);
+      printf("marqdb> ");
+      continue;
+    }
+
+    printf("Unknown command.\nmarqdb> ");
+  }
+}
