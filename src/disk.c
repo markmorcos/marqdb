@@ -1,4 +1,5 @@
 #include "disk.h"
+#include "page.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -33,11 +34,7 @@ uint32_t disk_alloc_page(DiskManager* dm) {
   uint32_t pid = (uint32_t)(size / PAGE_SIZE);
 
   Page p;
-  memset(&p, 0, sizeof(Page));
-  p.hdr.page_id = pid;
-  p.hdr.free_start = 0;
-  p.hdr.free_end = sizeof(p.data);
-
+  page_init(&p, pid);
   disk_write_page(dm, pid, &p);
   return pid;
 }

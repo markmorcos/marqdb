@@ -1,62 +1,42 @@
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
-#include "disk.h"
-
-static void die(const char* msg) {
-  perror(msg);
-  exit(1);
-}
+#include <stdlib.h>
+#include "page.h"
 
 int main() {
-  const char* path = "test.db";
+  Page p;
+  page_init(&p, 0);
 
-  // -------- Phase 1: allocate + write 100 pages --------
-  DiskManager* dm = disk_open(path);
-  if (!dm) die("disk_open");
-
-  const int N = 100;
-  uint32_t pids[N];
-
-  for (int i = 0; i < N; i++) {
-    uint32_t pid = disk_alloc_page(dm);
-    pids[i] = pid;
-
-    Page p;
-    disk_read_page(dm, pid, &p);
-
-    char msg[64];
-    snprintf(msg, sizeof(msg), "page-%u says hi", pid);
-
-    memcpy(p.data, msg, strlen(msg) + 1);
-    disk_write_page(dm, pid, &p);
+  int inserted = 0;
+  for (int i = 0; i < 1000; i++) {
+    char row[128];
+    int len = snprintf(row, sizeof(row), "row-%d: hello hello hello", i);
+    int slot = page_insert(&p, (uint8_t*)row, (uint16_t)(len + 1));
+    if (slot < 0) break;
+    inserted++;
   }
 
-  disk_close(dm);
+  printf("Inserted %d rows into one page.\n", inserted);
+  printf("free_start=%u free_end=%u slot_count=%u\n",
+         p.hdr.free_start, p.hdr.free_end, p.hdr.slot_count);
 
-  // -------- Phase 2: reopen + verify all pages --------
-  dm = disk_open(path);
-  if (!dm) die("disk_open (reopen)");
+  for (int i = 0; i < inserted; i += 5) {
+    page_delete(&p, i);
+  }
 
-  for (int i = 0; i < N; i++) {
-    uint32_t pid = pids[i];
-
-    Page q;
-    disk_read_page(dm, pid, &q);
-
-    char expected[64];
-    snprintf(expected, sizeof(expected), "page-%u says hi", pid);
-
-    if (strcmp((char*)q.data, expected) != 0) {
-      fprintf(stderr, "Mismatch on page %u!\n", pid);
-      fprintf(stderr, "Expected: %s\n", expected);
-      fprintf(stderr, "Got:      %s\n", (char*)q.data);
-      return 1;
+  int alive = 0, dead = 0;
+  for (int i = 0; i < p.hdr.slot_count; i++) {
+    uint8_t* out;
+    uint16_t len;
+    if (page_get(&p, i, &out, &len)) {
+      alive++;
+      if (i < 3) printf("slot %d -> %s\n", i, (char*)out);
+    } else {
+      dead++;
     }
   }
 
-  printf("✅ All %d pages written and verified correctly.\n", N);
+  printf("Scan result: alive=%d dead=%d\n", alive, dead);
 
-  disk_close(dm);
   return 0;
 }
