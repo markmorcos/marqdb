@@ -1,5 +1,4 @@
 #include "heap.h"
-#include "buffer.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -18,8 +17,7 @@ HeapFile heap_open(BufferPool* bp) {
   HeapFile hf = {0};
   hf.header_page_id = 0;
 
-  fseek(bp->dm->f, 0, SEEK_END);
-  long size = ftell(bp->dm->f);
+  long size = disk_file_size(bp->dm);
 
   if (size == 0) {
     uint32_t header_pid = disk_alloc_page(bp->dm);

@@ -75,3 +75,14 @@ void disk_write_page(DiskManager* dm, uint32_t page_id, const Page* in);
  *                  if allocation fails
  */
 uint32_t disk_alloc_page(DiskManager* dm);
+
+/**
+ * @brief Retrieves the total size of the disk file in bytes.
+ * 
+ * This function returns the current size of the file managed by the DiskManager.
+ * It can be used to determine how much data is stored on disk.
+ * 
+ * @param dm Pointer to the DiskManager instance managing the disk file
+ * @return long The size of the disk file in bytes
+ */
+long disk_file_size(DiskManager* dm);
