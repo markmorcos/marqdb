@@ -1,8 +1,9 @@
 #include "page.h"
 #include <string.h>
 
-static inline Slot* slot_dir_base(Page* p) {
-  return (Slot*)(p->data + p->hdr.free_end);
+static inline Slot* slot_at(Page* p, int slot_id) {
+  uint16_t data_end = (uint16_t)sizeof(p->data);
+  return (Slot*)(p->data + data_end - (slot_id + 1) * sizeof(Slot));
 }
 
 void page_init(Page* p, uint32_t page_id) {
@@ -12,6 +13,7 @@ void page_init(Page* p, uint32_t page_id) {
   p->hdr.free_end = sizeof(p->data);
   p->hdr.slot_count = 0;
   p->hdr.flags = 0;
+  p->hdr.next_page_id = 0xFFFFFFFF;
 }
 
 bool page_has_space(Page* p, uint16_t record_len) {
@@ -39,8 +41,7 @@ int page_insert(Page* p, const uint8_t* rec, uint16_t len) {
 bool page_get(Page* p, int slot_id, uint8_t** out, uint16_t* len) {
   if (slot_id < 0 || slot_id >= p->hdr.slot_count) return false;
 
-  Slot* first = slot_dir_base(p);
-  Slot* s = &first[slot_id];
+  Slot* s = slot_at(p, slot_id);
 
   if (s->deleted) return false;
 
@@ -51,7 +52,7 @@ bool page_get(Page* p, int slot_id, uint8_t** out, uint16_t* len) {
 
 bool page_delete(Page* p, int slot_id) {
   if (slot_id < 0 || slot_id >= p->hdr.slot_count) return false;
-  Slot* first = slot_dir_base(p);
-  first[slot_id].deleted = 1;
+  Slot* s = slot_at(p, slot_id);
+  s->deleted = 1;
   return true;
 }

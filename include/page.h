@@ -17,6 +17,8 @@ typedef struct {
   uint16_t free_end;    ///< Offset to the end of free space in the page
   uint16_t slot_count;  ///< Number of slots (records) currently in the page
   uint16_t flags;       ///< Page flags for various page states and properties
+
+  uint32_t next_page_id; ///< ID of the next page in the linked list (0xFFFFFFFF if none)
 } PageHeader;
 
 /**

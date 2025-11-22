@@ -1,42 +1,41 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include "page.h"
+#include "heap.h"
 
 int main() {
-  Page p;
-  page_init(&p, 0);
+  const char* path = "test.db";
+  DiskManager* dm = disk_open(path);
+  HeapFile hf = heap_open(dm);
 
-  int inserted = 0;
-  for (int i = 0; i < 1000; i++) {
+  // insert a lot of rows
+  const int N = 10000;
+  for (int i = 0; i < N; i++) {
     char row[128];
-    int len = snprintf(row, sizeof(row), "row-%d: hello hello hello", i);
-    int slot = page_insert(&p, (uint8_t*)row, (uint16_t)(len + 1));
-    if (slot < 0) break;
-    inserted++;
+    int len = snprintf(row, sizeof(row), "user-%d|name=Mark-%d", i, i);
+    heap_insert(dm, &hf, (uint8_t*)row, (uint16_t)(len + 1));
   }
+  disk_close(dm);
 
-  printf("Inserted %d rows into one page.\n", inserted);
-  printf("free_start=%u free_end=%u slot_count=%u\n",
-         p.hdr.free_start, p.hdr.free_end, p.hdr.slot_count);
+  // reopen to prove persistence
+  dm = disk_open(path);
+  hf = heap_open(dm);
 
-  for (int i = 0; i < inserted; i += 5) {
-    page_delete(&p, i);
-  }
+  // scan all rows
+  RID cur = { .page_id = 0xFFFFFFFF, .slot_id = 0 };
+  int count = 0;
+  uint8_t* out;
+  uint16_t len;
 
-  int alive = 0, dead = 0;
-  for (int i = 0; i < p.hdr.slot_count; i++) {
-    uint8_t* out;
-    uint16_t len;
-    if (page_get(&p, i, &out, &len)) {
-      alive++;
-      if (i < 3) printf("slot %d -> %s\n", i, (char*)out);
-    } else {
-      dead++;
+  while (heap_scan_next(dm, &hf, &cur, &out, &len)) {
+    count++;
+    if (count <= 3) {
+      printf("row %d -> %s\n", count, (char*)out);
     }
   }
 
-  printf("Scan result: alive=%d dead=%d\n", alive, dead);
+  printf("Scanned %d rows.\n", count);
 
+  disk_close(dm);
   return 0;
 }
