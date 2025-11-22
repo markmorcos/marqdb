@@ -1,7 +1,7 @@
 #pragma once
 #include <stdint.h>
 #include <stdbool.h>
-#include "disk.h"
+#include "buffer.h"
 #include "page.h"
 
 /**
@@ -29,14 +29,14 @@ typedef struct {
 } RID;
 
 /**
- * @brief Opens or creates a heap file on the given DiskManager.
+ * @brief Opens or creates a heap file on the given BufferPool.
  * 
  * If the heap file does not exist, it will be created with an initial header page.
  * 
- * @param dm Pointer to the DiskManager for disk operations
+ * @param bp Pointer to the BufferPool for buffer management
  * @return HeapFile structure representing the opened or created heap file
  */
-HeapFile heap_open(DiskManager* dm);
+HeapFile heap_open(BufferPool* bp);
 
 /**
  * @brief Inserts a record into the heap file.
@@ -45,13 +45,13 @@ HeapFile heap_open(DiskManager* dm);
  * If no such page exists, a new page is allocated. The record is then inserted,
  * and its RID is returned.
  * 
- * @param dm Pointer to the DiskManager for disk operations
+ * @param bp Pointer to the BufferPool for buffer management
  * @param hf Pointer to the HeapFile where the record will be inserted
  * @param rec Pointer to the record data to be inserted
  * @param len Length of the record in bytes
  * @return RID of the inserted record
  */
-RID heap_insert(DiskManager* dm, HeapFile* hf, const uint8_t* rec, uint16_t len);
+RID heap_insert(BufferPool* bp, HeapFile* hf, const uint8_t* rec, uint16_t len);
 
 /**
  * @brief Retrieves a record from the heap file using its RID.
@@ -59,13 +59,13 @@ RID heap_insert(DiskManager* dm, HeapFile* hf, const uint8_t* rec, uint16_t len)
  * This function locates the page and slot specified by the RID and retrieves
  * the corresponding record data.
  * 
- * @param dm Pointer to the DiskManager for disk operations
+ * @param bp Pointer to the BufferPool for buffer management
  * @param rid RID of the record to retrieve
  * @param out Output parameter that will point to the record data
  * @param len Output parameter that will hold the length of the record
  * @return true if the record was successfully retrieved, false otherwise
  */
-bool heap_get(DiskManager* dm, RID rid, uint8_t** out, uint16_t* len);
+bool heap_get(BufferPool* bp, RID rid, uint8_t** out, uint16_t* len);
 
 /**
  * @brief Scans the heap file to retrieve the next record in sequence.
@@ -73,11 +73,11 @@ bool heap_get(DiskManager* dm, RID rid, uint8_t** out, uint16_t* len);
  * This function uses a cursor (RID) to keep track of the current position
  * in the heap file and retrieves the next available record.
  * 
- * @param dm Pointer to the DiskManager for disk operations
+ * @param bp Pointer to the BufferPool for buffer management
  * @param hf Pointer to the HeapFile being scanned
  * @param cursor Pointer to the RID cursor indicating the current position
  * @param out Output parameter that will point to the record data
  * @param len Output parameter that will hold the length of the record
  * @return true if the next record was successfully retrieved, false otherwise
  */
-bool heap_scan_next(DiskManager* dm, HeapFile* hf, RID* cursor, uint8_t** out, uint16_t* len);
+bool heap_scan_next(BufferPool* bp, HeapFile* hf, RID* cursor, uint8_t** out, uint16_t* len);

@@ -10,7 +10,7 @@
  * It provides a wrapper around standard file operations for database storage management.
  */
 typedef struct {
-  FILE* f; /**< File pointer for disk I/O operations */
+  FILE* f; ///< File pointer for disk I/O operations */
 } DiskManager;
 
 /**
