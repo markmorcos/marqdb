@@ -2,7 +2,7 @@
 #include "buffer.h"
 #include <stdio.h>
 
-void repl(BufferPool* bp); // from sql.c
+void repl(BufferPool* bp);
 
 int main() {
   DiskManager* dm = disk_open("test.db");
