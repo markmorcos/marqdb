@@ -7,13 +7,26 @@
 #define INVALID_PID 0xFFFFFFFF
 
 /**
- * @brief The Catalog structure holds metadata about the database catalog.
+ * @brief Represents the catalog structure in the database.
  * 
- * It currently contains the PID of the heap file's header page.
+ * The catalog maintains metadata about the database, including the PID of
+ * the heap file header page.
  */
 typedef struct {
-  uint32_t heap_header_pid;
+  uint32_t catalog_heap_header_pid;
 } Catalog;
+
+#define TABLE_NAME_MAX 32
+
+/**
+ * @brief Represents an entry in the catalog for a specific table.
+ * 
+ * Each entry contains the table name and the PID of its heap file header page.
+ */
+typedef struct {
+  char name[TABLE_NAME_MAX];
+  uint32_t heap_header_pid;
+} CatalogEntry;
 
 /**
   * @brief Opens the catalog from the buffer pool.
@@ -36,3 +49,31 @@ Catalog catalog_open(BufferPool* bp);
  * @param c Pointer to the Catalog structure containing catalog data to write
  */
 void catalog_write(BufferPool* bp, const Catalog* c);
+
+/**
+ * @brief Finds a table in the catalog by name.
+ * 
+ * This function searches the catalog for a table with the specified name
+ * and retrieves the PID of its heap file header page if found.
+ * 
+ * @param bp Pointer to the BufferPool instance managing memory pages
+ * @param c Pointer to the Catalog structure containing catalog data
+ * @param name The name of the table to find
+ * @param out_heap_header_pid Pointer to store the found heap header PID
+ * @return true if the table is found, false otherwise
+ */
+bool catalog_find_table(BufferPool* bp, Catalog* c, const char* name, uint32_t* out_heap_header_pid);
+
+/**
+ * @brief Creates a new table entry in the catalog.
+ * 
+ * This function adds a new table with the specified name to the catalog
+ * and allocates a new heap file header page for it.
+ * 
+ * @param bp Pointer to the BufferPool instance managing memory pages
+ * @param c Pointer to the Catalog structure containing catalog data
+ * @param name The name of the table to create
+ * @param out_heap_header_pid Pointer to store the allocated heap header PID
+ * @return true if the table was successfully created, false otherwise
+ */
+bool catalog_create_table(BufferPool* bp, Catalog* c, const char* name, uint32_t* out_heap_header_pid);

@@ -18,11 +18,24 @@ static int starts_with(const char* s, const char* pref) {
   return strncasecmp(s, pref, strlen(pref)) == 0;
 }
 
+static int parse_ident_after(const char* line, const char* kw, char* out, size_t out_sz) {
+  const char* p = strcasestr(line, kw);
+  if (!p) return 0;
+  p += strlen(kw);
+  while (*p && isspace((unsigned char)*p)) p++;
+
+  size_t i = 0;
+  while (*p && (isalnum((unsigned char)*p) || *p == '_')) {
+    if (i + 1 >= out_sz) break;
+    out[i++] = *p++;
+  }
+  out[i] = 0;
+  return i > 0;
+}
+
 void repl(BufferPool* bp) {
   Catalog cat = catalog_open(bp);
-  if (cat.heap_header_pid == INVALID_PID) return;
-
-  HeapFile hf = heap_open(bp, cat.heap_header_pid);
+  if (cat.catalog_heap_header_pid == INVALID_PID) return;
 
   char line[512];
 
@@ -36,12 +49,30 @@ void repl(BufferPool* bp) {
     }
 
     if (starts_with(line, "create table")) {
-      printf("OK (single-table MVP)\n");
+      char tname[TABLE_NAME_MAX];
+      if (!parse_ident_after(line, "create table", tname, sizeof(tname))) {
+        printf("Parse error.\nmarqdb> "); continue;
+      }
+      uint32_t heap_h;
+      if (catalog_create_table(bp, &cat, tname, &heap_h)) {
+        printf("OK\n");
+      }
       printf("marqdb> ");
       continue;
     }
 
     if (starts_with(line, "insert into")) {
+      char tname[TABLE_NAME_MAX];
+      if (!parse_ident_after(line, "insert into", tname, sizeof(tname))) {
+        printf("Parse error.\nmarqdb> "); continue;
+      }
+
+      uint32_t heap_h_pid;
+      if (!catalog_find_table(bp, &cat, tname, &heap_h_pid)) {
+        printf("No such table.\nmarqdb> "); continue;
+      }
+      HeapFile hf = heap_open(bp, heap_h_pid);
+
       char* values = strcasestr(line, "values");
       if (!values) { printf("Parse error.\nmarqdb> "); continue; }
 
@@ -71,6 +102,17 @@ void repl(BufferPool* bp) {
     }
 
     if (starts_with(line, "select *")) {
+      char tname[TABLE_NAME_MAX];
+      if (!parse_ident_after(line, "from", tname, sizeof(tname))) {
+        printf("Parse error.\nmarqdb> "); continue;
+      }
+      
+      uint32_t heap_h_pid;
+      if (!catalog_find_table(bp, &cat, tname, &heap_h_pid)) {
+        printf("No such table.\nmarqdb> "); continue;
+      }
+
+      HeapFile hf = heap_open(bp, heap_h_pid);
       RID cur = { .page_id = INVALID_PID, .slot_id = 0 };
       uint8_t* out;
       uint16_t len;
