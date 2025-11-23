@@ -13,6 +13,7 @@ void catalog_write(BufferPool* bp, const Catalog* c) {
   Page* p = bp_fetch_page(bp, CATALOG_PID);
   write_magic(p);
   memcpy(p->data + 8, &c->catalog_heap_header_pid, sizeof(uint32_t));
+  memcpy(p->data + 12, &c->columns_heap_header_pid, sizeof(uint32_t));
   bp_unpin_page(bp, CATALOG_PID, true);
 }
 

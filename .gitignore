@@ -54,6 +54,6 @@ dkms.conf
 # debug information files
 *.dwo
 
-# Output files
 build/
 *.db
+.DS_Store
