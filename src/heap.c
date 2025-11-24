@@ -1,4 +1,5 @@
 #include "heap.h"
+#include "page.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -122,4 +123,38 @@ bool heap_scan_next(BufferPool* bp, HeapFile* hf, RID* cursor, uint8_t** out, ui
   }
 
   return false;
+}
+
+int heap_update_in_place(BufferPool* bp, RID rid, const uint8_t* data, uint16_t new_len) {
+  Page* p = bp_fetch_page(bp, rid.page_id);
+  if (!p) return -1;
+
+  if (rid.slot_id >= p->hdr.slot_count) {
+    bp_unpin_page(bp, rid.page_id, false);
+    return -1;
+  }
+
+  Slot* s = slot_at(p, rid.slot_id);
+
+  if (s->deleted || s->len == 0) {
+    bp_unpin_page(bp, rid.page_id, false);
+    return -1;
+  }
+
+  if (new_len > s->len) {
+    bp_unpin_page(bp, rid.page_id, false);
+    return -1;
+  }
+
+  if ((uint32_t)s->offset + new_len > sizeof(p->data)) {
+    bp_unpin_page(bp, rid.page_id, false);
+    return -1;
+  }
+
+  memcpy(p->data + s->offset, data, new_len);
+
+  s->len = new_len;
+
+  bp_unpin_page(bp, rid.page_id, true);
+  return 0;
 }

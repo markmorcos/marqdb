@@ -295,6 +295,164 @@ int sql_exec_select(BufferPool* bp, Catalog* cat, const char* line) {
 }
 
 // ============================================================================
+// Update statement parsing
+// ============================================================================
+
+int sql_parse_update(const char* line, UpdateStmt* st) {
+  memset(st, 0, sizeof(*st));
+
+  if (!sql_parse_ident_after(line, "update", st->table, sizeof(st->table))) {
+    return -1;
+  }
+
+  const char* set_kw = strcasestr(line, "set");
+  if (!set_kw) return -1;
+  const char* p = set_kw + 3;
+
+  while (*p && isspace((unsigned char)*p)) p++;
+
+  const char* where_kw = strcasestr(p, "where");
+  size_t set_len = where_kw ? (size_t)(where_kw - p) : strlen(p);
+
+  char set_part[256];
+  if (set_len >= sizeof(set_part)) set_len = sizeof(set_part) - 1;
+  memcpy(set_part, p, set_len);
+  set_part[set_len] = 0;
+  sql_trim(set_part);
+
+  char col[COL_NAME_MAX] = {0};
+  char val[128] = {0};
+  if (sscanf(set_part, "%31s = %127[^\n]", col, val) != 2) return -1;
+
+  sql_trim(col);
+  sql_trim(val);
+
+  size_t L = strlen(val);
+  if (L > 0 && val[L - 1] == ';') val[L - 1] = 0;
+  sql_trim(val);
+
+  L = strlen(val);
+  if ((val[0] == '\'' || val[0] == '"') && L >= 2) {
+    val[L - 1] = 0;
+    memmove(val, val + 1, L);
+  }
+
+  strncpy(st->set_col, col, COL_NAME_MAX - 1);
+  strncpy(st->set_value, val, sizeof(st->set_value) - 1);
+
+  Filter f;
+  int hw = sql_parse_where_clause(line, &f);
+  if (hw < 0) return -1;
+  if (hw == 1) {
+    st->has_where = 1;
+    st->where = f;
+  }
+
+  return 1;
+}
+
+int sql_exec_update(BufferPool* bp, Catalog* cat, const char* line) {
+  UpdateStmt st;
+  if (sql_parse_update(line, &st) < 0) {
+    printf("UPDATE parse error.\n");
+    return -1;
+  }
+
+  uint32_t heap_h_pid;
+  if (!catalog_find_table(bp, cat, st.table, &heap_h_pid)) {
+    printf("Table '%s' does not exist.\n", st.table);
+    return -1;
+  }
+
+  ColumnDef cols[16];
+  int ncols = catalog_load_schema(bp, cat, st.table, cols, 16);
+  if (ncols <= 0) {
+    printf("Schema missing for table '%s'.\n", st.table);
+    return -1;
+  }
+
+  int set_idx = -1;
+  for (int i = 0; i < ncols; i++) {
+    if (strcasecmp(cols[i].col, st.set_col) == 0) { set_idx = i; break; }
+  }
+  if (set_idx < 0) {
+    printf("Unknown column in SET.\n");
+    return -1;
+  }
+
+  HeapFile hf = heap_open(bp, heap_h_pid);
+  RID cur = { .page_id = INVALID_PID, .slot_id = 0 };
+  uint8_t* out;
+  uint16_t len;
+  int updated = 0;
+
+  while (heap_scan_next(bp, &hf, &cur, &out, &len)) {
+    DecodedValue vals[16];
+    char scratch[256];
+    if (row_decode_values(cols, ncols, out, len, vals, scratch, sizeof(scratch)) < 0) {
+      bp_unpin_page(bp, cur.page_id, false);
+      continue;
+    }
+
+    int pass = 1;
+    if (st.has_where) {
+      char linebuf[512];
+      if (row_decode(cols, ncols, out, len, linebuf, sizeof(linebuf)) < 0) {
+        pass = 0;
+      } else if (!sql_filter_match(&st.where, linebuf)) {
+        pass = 0;
+      }
+    }
+
+    if (!pass) {
+      bp_unpin_page(bp, cur.page_id, false);
+      continue;
+    }
+
+    const char* new_vals[16];
+    char buf_vals[16][128];
+
+    for (int i = 0; i < ncols; i++) {
+      if (i == set_idx) {
+        strncpy(buf_vals[i], st.set_value, 127);
+        buf_vals[i][127] = 0;
+      } else if (vals[i].is_null) {
+        strcpy(buf_vals[i], "NULL");
+      } else if (cols[i].type == COL_INT) {
+        snprintf(buf_vals[i], sizeof(buf_vals[i]), "%d", vals[i].i32);
+      } else {
+        strncpy(buf_vals[i], vals[i].text, 127);
+        buf_vals[i][127] = 0;
+      }
+      new_vals[i] = buf_vals[i];
+    }
+
+    uint8_t enc[512];
+    int enc_len = row_encode(cols, ncols, new_vals, ncols, enc, sizeof(enc));
+    if (enc_len < 0) {
+      bp_unpin_page(bp, cur.page_id, false);
+      continue;
+    }
+
+    if (enc_len > len) {
+      printf("Row too large to update in place. Skipping.\n");
+      bp_unpin_page(bp, cur.page_id, false);
+      continue;
+    }
+
+    if (heap_update_in_place(bp, cur, enc, (uint16_t)enc_len) == 0) {
+      updated++;
+    }
+
+    bp_unpin_page(bp, cur.page_id, false);
+  }
+
+  printf("%d row%s updated.\n", updated, updated == 1 ? "" : "s");
+  return updated;
+}
+
+
+// ============================================================================
 // REPL
 // ============================================================================
 
@@ -327,6 +485,7 @@ void repl(BufferPool* bp) {
       printf("  CREATE TABLE name (col1 TYPE1, col2 TYPE2, ...);\n");
       printf("  INSERT INTO name VALUES (val1, val2, ...);\n");
       printf("  SELECT * FROM name [WHERE col = value];\n");
+      printf("  UPDATE name SET col = value [WHERE col = value];\n");
       printf("  .exit / .quit  - Exit the database\n");
       printf("  .help          - Show this help message\n");
       continue;
@@ -339,6 +498,8 @@ void repl(BufferPool* bp) {
       sql_exec_insert(bp, &cat, line);
     } else if (sql_starts_with(line, "select *")) {
       sql_exec_select(bp, &cat, line);
+    } else if (sql_starts_with(line, "update")) {
+      sql_exec_update(bp, &cat, line);
     } else {
       printf("Unknown command. Type .help for available commands.\n");
     }

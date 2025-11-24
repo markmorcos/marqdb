@@ -1,7 +1,7 @@
 #include "page.h"
 #include <string.h>
 
-static inline Slot* slot_at(Page* p, int slot_id) {
+Slot* slot_at(Page* p, int slot_id) {
   uint16_t data_end = (uint16_t)sizeof(p->data);
   return (Slot*)(p->data + data_end - (slot_id + 1) * sizeof(Slot));
 }

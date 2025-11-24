@@ -136,3 +136,26 @@ int sql_exec_select(BufferPool* bp, Catalog* cat, const char* line);
  * @param bp Pointer to the BufferPool structure
  */
 void repl(BufferPool* bp);
+
+/**
+ * @brief Update statement structure for SQL UPDATE commands
+ * 
+ * This structure represents an UPDATE SQL command, including the target table,
+ * the column to set, the new value, and an optional WHERE clause for filtering.
+ */
+typedef struct {
+  char table[TABLE_NAME_MAX]; ///< Name of the table to update
+  char set_col[COL_NAME_MAX]; ///< Column name to set
+  char set_value[128]; ///< New value to set
+  int has_where; ///< Flag indicating if a WHERE clause is present
+  Filter where; ///< WHERE clause filter
+} UpdateStmt;
+
+/**
+ * @brief Parses an UPDATE SQL statement into an UpdateStmt structure
+ * 
+ * @param line The complete UPDATE command line
+ * @param st Pointer to UpdateStmt structure to populate
+ * @return int 1 on successful parse, 0 on failure
+ */
+int sql_parse_update(const char* line, UpdateStmt* st);

@@ -94,3 +94,19 @@ bool heap_get(BufferPool* bp, RID rid, uint8_t** out, uint16_t* len);
  * @return true if the next record was successfully retrieved, false otherwise
  */
 bool heap_scan_next(BufferPool* bp, HeapFile* hf, RID* cursor, uint8_t** out, uint16_t* len);
+
+/**
+ * @brief Updates a record in place within the heap file.
+ * 
+ * This function locates the record specified by the RID and updates its
+ * data with the new provided data, assuming the new data fits in the
+ * existing space.
+ * 
+ * @param bp Pointer to the BufferPool for buffer management
+ * @param rid RID of the record to update
+ * @param data Pointer to the new record data
+ * @param new_len Length of the new record data in bytes
+ * @return int 0 on success, -1 on failure
+ */
+int heap_update_in_place(BufferPool* bp, RID rid,
+                         const uint8_t* data, uint16_t new_len);

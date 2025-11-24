@@ -51,6 +51,15 @@ typedef struct {
 } Slot;
 
 /**
+ * @brief Retrieves a pointer to the Slot structure for a given slot ID within a Page.
+ * 
+ * @param p Pointer to the Page containing the slots
+ * @param slot_id The slot ID for which to retrieve the Slot pointer
+ * @return Pointer to the Slot structure corresponding to the given slot ID
+ */
+Slot* slot_at(Page* p, int slot_id);
+
+/**
  * @brief Initializes a Page structure with default values.
  * 
  * This function sets up a Page by initializing its header fields to default values,
