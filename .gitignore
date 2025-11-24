@@ -57,3 +57,4 @@ dkms.conf
 build/
 *.db
 .DS_Store
+settings.json

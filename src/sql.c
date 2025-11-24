@@ -381,19 +381,20 @@ int sql_exec_update(BufferPool* bp, Catalog* cat, const char* line) {
   }
 
   HeapFile hf = heap_open(bp, heap_h_pid);
+  
+  typedef struct RIDNode {
+    RID rid;
+    struct RIDNode* next;
+  } RIDNode;
+  
+  RIDNode* head = NULL;
+  RIDNode* tail = NULL;
+  
   RID cur = { .page_id = INVALID_PID, .slot_id = 0 };
   uint8_t* out;
   uint16_t len;
-  int updated = 0;
 
   while (heap_scan_next(bp, &hf, &cur, &out, &len)) {
-    DecodedValue vals[16];
-    char scratch[256];
-    if (row_decode_values(cols, ncols, out, len, vals, scratch, sizeof(scratch)) < 0) {
-      bp_unpin_page(bp, cur.page_id, false);
-      continue;
-    }
-
     int pass = 1;
     if (st.has_where) {
       char linebuf[512];
@@ -404,8 +405,47 @@ int sql_exec_update(BufferPool* bp, Catalog* cat, const char* line) {
       }
     }
 
-    if (!pass) {
-      bp_unpin_page(bp, cur.page_id, false);
+    if (pass) {
+      RIDNode* node = malloc(sizeof(RIDNode));
+      if (!node) {
+        bp_unpin_page(bp, cur.page_id, false);
+        while (head) {
+          RIDNode* tmp = head;
+          head = head->next;
+          free(tmp);
+        }
+        printf("Memory allocation failed.\n");
+        return -1;
+      }
+      node->rid = cur;
+      node->next = NULL;
+      
+      if (!head) {
+        head = tail = node;
+      } else {
+        tail->next = node;
+        tail = node;
+      }
+    }
+    
+    bp_unpin_page(bp, cur.page_id, false);
+  }
+
+  int updated = 0;
+  RIDNode* current = head;
+  
+  while (current) {
+    RID rid = current->rid;
+    
+    if (!heap_get(bp, rid, &out, &len)) {
+      current = current->next;
+      continue;
+    }
+    
+    DecodedValue vals[16];
+    char scratch[256];
+    if (row_decode_values(cols, ncols, out, len, vals, scratch, sizeof(scratch)) < 0) {
+      current = current->next;
       continue;
     }
 
@@ -430,21 +470,35 @@ int sql_exec_update(BufferPool* bp, Catalog* cat, const char* line) {
     uint8_t enc[512];
     int enc_len = row_encode(cols, ncols, new_vals, ncols, enc, sizeof(enc));
     if (enc_len < 0) {
-      bp_unpin_page(bp, cur.page_id, false);
+      current = current->next;
       continue;
     }
 
-    if (enc_len > len) {
-      printf("Row too large to update in place. Skipping.\n");
-      bp_unpin_page(bp, cur.page_id, false);
+    if (enc_len <= len) {
+      if (heap_update_in_place(bp, rid, enc, (uint16_t)enc_len) == 0) {
+        updated++;
+      }
+      current = current->next;
       continue;
     }
 
-    if (heap_update_in_place(bp, cur, enc, (uint16_t)enc_len) == 0) {
+    heap_insert(bp, &hf, enc, (uint16_t)enc_len);
+    
+    Page* p = bp_fetch_page(bp, rid.page_id);
+    if (p && page_delete(p, rid.slot_id)) {
       updated++;
+      bp_unpin_page(bp, rid.page_id, true);
+    } else {
+      bp_unpin_page(bp, rid.page_id, false);
     }
+    
+    current = current->next;
+  }
 
-    bp_unpin_page(bp, cur.page_id, false);
+  while (head) {
+    RIDNode* tmp = head;
+    head = head->next;
+    free(tmp);
   }
 
   printf("%d row%s updated.\n", updated, updated == 1 ? "" : "s");
