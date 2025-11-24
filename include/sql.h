@@ -159,3 +159,44 @@ typedef struct {
  * @return int 1 on successful parse, 0 on failure
  */
 int sql_parse_update(const char* line, UpdateStmt* st);
+
+/**
+ * @brief Executes an UPDATE SQL command
+ * 
+ * @param bp Pointer to the BufferPool
+ * @param cat Pointer to the Catalog
+ * @param line The complete UPDATE command line
+ * @return int Number of rows updated, or -1 on error
+ */
+int sql_exec_update(BufferPool* bp, Catalog* cat, const char* line);
+
+/**
+ * @brief Delete statement structure for SQL DELETE commands
+ * 
+ * This structure represents a DELETE SQL command, including the target table
+ * and an optional WHERE clause for filtering.
+ */
+typedef struct {
+  char table[TABLE_NAME_MAX]; ///< Name of the table to delete from
+  int has_where; ///< Flag indicating if a WHERE clause is present
+  Filter where; ///< WHERE clause filter
+} DeleteStmt;
+
+/**
+ * @brief Parses a DELETE SQL statement into a DeleteStmt structure
+ * 
+ * @param line The complete DELETE command line
+ * @param st Pointer to DeleteStmt structure to populate
+ * @return int 1 on successful parse, 0 on failure
+ */
+int sql_parse_delete(const char* line, DeleteStmt* st);
+
+/**
+ * @brief Executes a DELETE SQL command
+ * 
+ * @param bp Pointer to the BufferPool
+ * @param cat Pointer to the Catalog
+ * @param line The complete DELETE command line
+ * @return int Number of rows deleted, or -1 on error
+ */
+int sql_exec_delete(BufferPool* bp, Catalog* cat, const char* line);

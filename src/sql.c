@@ -451,6 +451,84 @@ int sql_exec_update(BufferPool* bp, Catalog* cat, const char* line) {
   return updated;
 }
 
+// ============================================================================
+// Delete statement parsing
+// ============================================================================
+
+int sql_parse_delete(const char* line, DeleteStmt* st) {
+  memset(st, 0, sizeof(*st));
+
+  if (!sql_parse_ident_after(line, "delete from", st->table, sizeof(st->table))) {
+    return -1;
+  }
+
+  Filter f;
+  int hw = sql_parse_where_clause(line, &f);
+  if (hw < 0) return -1;
+  if (hw == 1) {
+    st->has_where = 1;
+    st->where = f;
+  }
+
+  return 1;
+}
+
+int sql_exec_delete(BufferPool* bp, Catalog* cat, const char* line) {
+  DeleteStmt st;
+  if (sql_parse_delete(line, &st) < 0) {
+    printf("DELETE parse error.\n");
+    return -1;
+  }
+
+  if (!st.has_where) {
+    printf("DELETE without WHERE not supported yet.\n");
+    return 0;
+  }
+
+  uint32_t heap_h_pid;
+  if (!catalog_find_table(bp, cat, st.table, &heap_h_pid)) {
+    printf("Table '%s' does not exist.\n", st.table);
+    return -1;
+  }
+
+  ColumnDef cols[16];
+  int ncols = catalog_load_schema(bp, cat, st.table, cols, 16);
+  if (ncols <= 0) {
+    printf("Schema missing for table '%s'.\n", st.table);
+    return -1;
+  }
+
+  HeapFile hf = heap_open(bp, heap_h_pid);
+  RID cur = { .page_id = INVALID_PID, .slot_id = 0 };
+  uint8_t* out;
+  uint16_t len;
+  int deleted = 0;
+
+  while (heap_scan_next(bp, &hf, &cur, &out, &len)) {
+    char linebuf[512];
+    int ok = row_decode(cols, ncols, out, len, linebuf, sizeof(linebuf)) >= 0;
+
+    int pass = ok && sql_filter_match(&st.where, linebuf);
+
+    if (pass) {
+      Page* p = bp_fetch_page(bp, cur.page_id);
+      if (p) {
+        if (page_delete(p, cur.slot_id)) {
+          deleted++;
+          bp_unpin_page(bp, cur.page_id, true);
+        } else {
+          bp_unpin_page(bp, cur.page_id, false);
+        }
+      }
+    }
+
+    bp_unpin_page(bp, cur.page_id, false);
+  }
+
+  printf("%d row%s deleted.\n", deleted, deleted == 1 ? "" : "s");
+  return deleted;
+}
+
 
 // ============================================================================
 // REPL
@@ -486,6 +564,7 @@ void repl(BufferPool* bp) {
       printf("  INSERT INTO name VALUES (val1, val2, ...);\n");
       printf("  SELECT * FROM name [WHERE col = value];\n");
       printf("  UPDATE name SET col = value [WHERE col = value];\n");
+      printf("  DELETE FROM name WHERE col = value;\n");
       printf("  .exit / .quit  - Exit the database\n");
       printf("  .help          - Show this help message\n");
       continue;
@@ -500,6 +579,8 @@ void repl(BufferPool* bp) {
       sql_exec_select(bp, &cat, line);
     } else if (sql_starts_with(line, "update")) {
       sql_exec_update(bp, &cat, line);
+    } else if (sql_starts_with(line, "delete")) {
+      sql_exec_delete(bp, &cat, line);
     } else {
       printf("Unknown command. Type .help for available commands.\n");
     }

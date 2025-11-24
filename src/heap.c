@@ -158,3 +158,16 @@ int heap_update_in_place(BufferPool* bp, RID rid, const uint8_t* data, uint16_t 
   bp_unpin_page(bp, rid.page_id, true);
   return 0;
 }
+
+int heap_delete(BufferPool* bp, RID rid) {
+  Page* p = bp_fetch_page(bp, rid.page_id);
+  if (!p) return -1;
+
+  if (!page_delete(p, rid.slot_id)) {
+    bp_unpin_page(bp, rid.page_id, false);
+    return -1;
+  }
+
+  bp_unpin_page(bp, rid.page_id, true);
+  return 0;
+}

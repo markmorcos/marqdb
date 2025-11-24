@@ -110,3 +110,14 @@ bool heap_scan_next(BufferPool* bp, HeapFile* hf, RID* cursor, uint8_t** out, ui
  */
 int heap_update_in_place(BufferPool* bp, RID rid,
                          const uint8_t* data, uint16_t new_len);
+
+/**
+ * @brief Deletes a record from the heap file.
+ * 
+ * This function marks the record specified by the RID as deleted.
+ * 
+ * @param bp Pointer to the BufferPool for buffer management
+ * @param rid RID of the record to delete
+ * @return int 0 on success, -1 on failure
+ */
+int heap_delete(BufferPool* bp, RID rid);
