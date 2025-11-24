@@ -89,8 +89,8 @@ int sql_parse_insert_values(const char* line, char values[][128], int max_vals) 
 
   char inside[256];
   size_t len = (size_t)(rpar - lpar - 1);
-  if (len >= sizeof(inside)) len = sizeof(inside)-1;
-  memcpy(inside, lpar+1, len);
+  if (len >= sizeof(inside)) len = sizeof(inside) - 1;
+  memcpy(inside, lpar + 1, len);
   inside[len] = 0;
 
   int n = 0;
@@ -101,7 +101,7 @@ int sql_parse_insert_values(const char* line, char values[][128], int max_vals) 
     if (tok[0] == '\'' || tok[0] == '"') {
       size_t m = strlen(tok);
       if (m >= 2) {
-        tok[m-1] = 0;
+        tok[m - 1] = 0;
         tok++;
       }
     }

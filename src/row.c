@@ -10,6 +10,9 @@ static void write_u16(uint8_t* p, uint16_t v) {
 static uint16_t read_u16(const uint8_t* p) {
   return (uint16_t)(p[0] | (p[1] << 8));
 }
+static int32_t read_i32_le(const uint8_t* p) {
+  return (int32_t)(((uint32_t)p[0]) | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24));
+}
 
 int row_encode(const ColumnDef* cols, int ncols,
                const char** values, int nvalues,
@@ -21,7 +24,21 @@ int row_encode(const ColumnDef* cols, int ncols,
   write_u16(out + pos, (uint16_t)ncols);
   pos += 2;
 
+  int null_bytes = (ncols + 7) / 8;
+  if (pos + null_bytes > out_cap) return -1;
+  memset(out + pos, 0, null_bytes);
+  uint8_t* nullmap = out + pos;
+  pos += null_bytes;
+
   for (int i = 0; i < ncols; i++) {
+    const char* v = values[i];
+    int is_null = (v == NULL) || (strcasecmp(v, "null") == 0);
+
+    if (is_null) {
+      nullmap[i / 8] |= (1u << (i % 8));
+      continue;
+    }
+
     if (cols[i].type == COL_INT) {
       long v = strtol(values[i], NULL, 10);
       if (pos + 4 > out_cap) return -1;
@@ -55,9 +72,23 @@ int row_decode(const ColumnDef* cols, int ncols,
   pos += 2;
   if (stored != ncols) return -1;
 
+  int null_bytes = (ncols + 7) / 8;
+  if (pos + null_bytes > row_len) return -1;
+  const uint8_t* nullmap = row + pos;
+  pos += null_bytes;
+
   int written = 0;
   for (int i = 0; i < ncols; i++) {
     if (written + 4 >= out_cap) return -1;
+
+    int is_null = (nullmap[i / 8] >> (i % 8)) & 1u;
+
+    if (is_null) {
+      written += snprintf(out_text + written, out_cap - written,
+                          "%s=NULL%s",
+                          cols[i].col, (i==ncols-1?"":" | "));
+      continue;
+    }
 
     if (cols[i].type == COL_INT) {
       if (pos + 4 > row_len) return -1;
@@ -89,4 +120,53 @@ int row_decode(const ColumnDef* cols, int ncols,
   }
 
   return written;
+}
+
+int row_decode_values(const ColumnDef* cols, int ncols,
+                      const uint8_t* row, int row_len,
+                      DecodedValue* out_vals,
+                      char* text_scratch, int scratch_cap) {
+  int pos = 0;
+  if (row_len < 2) return -1;
+
+  uint16_t stored = read_u16(row);
+  pos += 2;
+  if (stored != ncols) return -1;
+
+  int null_bytes = (ncols + 7) / 8;
+  if (pos + null_bytes > row_len) return -1;
+  const uint8_t* nullmap = row + pos;
+  pos += null_bytes;
+
+  int scratch_off = 0;
+
+  for (int i = 0; i < ncols; i++) {
+    out_vals[i].type = cols[i].type;
+    out_vals[i].is_null = (nullmap[i/8] >> (i%8)) & 1u;
+
+    if (out_vals[i].is_null) continue;
+
+    if (cols[i].type == COL_INT) {
+      if (pos + 4 > row_len) return -1;
+      out_vals[i].i32 = read_i32_le(row + pos);
+      pos += 4;
+    } else if (cols[i].type == COL_TEXT) {
+      if (pos + 2 > row_len) return -1;
+      uint16_t L = read_u16(row + pos);
+      pos += 2;
+      if (pos + L > row_len) return -1;
+
+      if (scratch_off + L + 1 > scratch_cap) return -1;
+      memcpy(text_scratch + scratch_off, row + pos, L);
+      text_scratch[scratch_off + L] = 0;
+
+      out_vals[i].text = text_scratch + scratch_off;
+      scratch_off += L + 1;
+      pos += L;
+    } else {
+      return -1;
+    }
+  }
+
+  return ncols;
 }

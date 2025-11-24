@@ -38,3 +38,37 @@ int row_encode(const ColumnDef* cols, int ncols,
 int row_decode(const ColumnDef* cols, int ncols,
                const uint8_t* row, int row_len,
                char* out_text, int out_cap);
+
+/**
+ * @brief Represents a decoded value from a row.
+ * 
+ * This structure holds the type of the column, a flag indicating if the value
+ * is NULL, and the actual value which can be either an integer or a text string.
+ */
+typedef struct {
+  ColumnType type; ///< Data type of the column
+  int is_null; ///< Flag indicating if the value is NULL
+  int32_t i32; ///< Integer value (if type is COL_INT)
+  const char* text; ///< Text value (if type is COL_TEXT)
+} DecodedValue;
+
+/**
+ * @brief Decodes a binary row of data into an array of DecodedValue structures.
+ * 
+ * This function takes a binary-encoded row and decodes it based on the
+ * provided column definitions, populating an array of DecodedValue structures
+ * with the decoded values.
+ * 
+ * @param cols Array of column definitions
+ * @param ncols Number of columns
+ * @param row Binary-encoded row data
+ * @param row_len Length of the binary row data
+ * @param out_vals Output array to write the decoded values
+ * @param text_scratch Scratch buffer for storing text values
+ * @param scratch_cap Capacity of the scratch buffer
+ * @return int The number of decoded values, or -1 on error
+ */
+int row_decode_values(const ColumnDef* cols, int ncols,
+                      const uint8_t* row, int row_len,
+                      DecodedValue* out_vals,
+                      char* text_scratch, int scratch_cap);
