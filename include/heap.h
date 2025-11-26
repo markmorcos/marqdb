@@ -37,8 +37,9 @@ typedef struct {
  * @param bp Pointer to the BufferPool for buffer management
  * @param header_pid Page ID of the heap file's header page
  * @param first_data_pid Page ID of the first data page in the heap file
+ * @return HeapFile structure representing the initialized heap file
  */
-void heap_bootstrap(BufferPool* bp, uint32_t header_pid, uint32_t first_data_pid);
+HeapFile heap_bootstrap(BufferPool* bp, uint32_t header_pid, uint32_t first_data_pid);
 
 /**
  * @brief Opens or creates a heap file on the given BufferPool.
@@ -121,3 +122,15 @@ int heap_update_in_place(BufferPool* bp, RID rid,
  * @return int 0 on success, -1 on failure
  */
 int heap_delete(BufferPool* bp, RID rid);
+
+/**
+ * @brief Creates a new heap file on the given BufferPool.
+ * 
+ * This function allocates a new header page for the heap file and initializes
+ * it. The page ID of the header page is returned via the output parameter.
+ * 
+ * @param bp Pointer to the BufferPool for buffer management
+ * @param out_header_pid Output parameter that will hold the page ID of the new header page
+ * @return HeapFile structure representing the newly created heap file
+ */
+HeapFile heap_create(BufferPool* bp, uint32_t* out_header_pid);

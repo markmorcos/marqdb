@@ -14,13 +14,14 @@ static void write_header(BufferPool* bp, HeapFile* hf) {
   bp_unpin_page(bp, hf->header_page_id, true);
 }
 
-void heap_bootstrap(BufferPool* bp, uint32_t header_pid, uint32_t first_data_pid) {
+HeapFile heap_bootstrap(BufferPool* bp, uint32_t header_pid, uint32_t first_data_pid) {
   HeapFile hf = {
     .header_page_id = header_pid,
     .first_data_pid = first_data_pid,
     .last_data_pid  = first_data_pid
   };
   write_header(bp, &hf);
+  return hf;
 }
 
 HeapFile heap_open(BufferPool* bp, uint32_t header_pid) {
@@ -170,4 +171,14 @@ int heap_delete(BufferPool* bp, RID rid) {
 
   bp_unpin_page(bp, rid.page_id, true);
   return 0;
+}
+
+HeapFile heap_create(BufferPool* bp, uint32_t* out_header_pid) {
+  uint32_t header_pid = disk_alloc_page(bp->dm);
+  uint32_t data_pid = disk_alloc_page(bp->dm);
+
+  HeapFile hf = heap_bootstrap(bp, header_pid, data_pid);
+
+  if (out_header_pid) *out_header_pid = header_pid;
+  return hf;
 }

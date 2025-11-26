@@ -133,3 +133,18 @@ int catalog_create_table(BufferPool* bp, Catalog* c,
 int  catalog_load_schema(BufferPool* bp, const Catalog* c,
                          const char* table,
                          ColumnDef* out_cols, int max_cols);
+
+/**
+ * @brief Updates the heap header PID for a specified table in the catalog.
+ * 
+ * This function modifies the catalog entry for the given table to point
+ * to a new heap file header page PID.
+ * 
+ * @param bp Pointer to the BufferPool instance managing memory pages
+ * @param c Pointer to the Catalog structure containing catalog data
+ * @param name The name of the table to update
+ * @param new_heap_header_pid The new heap header PID to set for the table
+ * @return true if the update was successful, false otherwise
+ */
+int catalog_update_table_heap(BufferPool* bp, const Catalog* c,
+                              const char* name, uint32_t new_heap_header_pid);

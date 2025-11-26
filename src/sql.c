@@ -583,6 +583,54 @@ int sql_exec_delete(BufferPool* bp, Catalog* cat, const char* line) {
   return deleted;
 }
 
+// ============================================================================
+// Vacuum command execution
+// ============================================================================
+
+int sql_exec_vacuum(BufferPool* bp, Catalog* cat, const char* line) {
+  char tname[TABLE_NAME_MAX];
+  if (!sql_parse_ident_after(line, "vacuum", tname, sizeof(tname))) {
+    printf("Parse error.\nmarqdb> ");
+    return 0;
+  }
+
+  uint32_t old_heap_h;
+  if (!catalog_find_table(bp, cat, tname, &old_heap_h)) {
+    printf("No such table.\nmarqdb> ");
+    return 0;
+  }
+
+  ColumnDef cols[16];
+  int ncols = catalog_load_schema(bp, cat, tname, cols, 16);
+  if (ncols <= 0) {
+    printf("Schema missing.\nmarqdb> ");
+    return 0;
+  }
+
+  HeapFile old_hf = heap_open(bp, old_heap_h);
+
+  uint32_t new_heap_h;
+  HeapFile new_hf = heap_create(bp, &new_heap_h);
+
+  RID cur = { .page_id = INVALID_PID, .slot_id = 0 };
+  uint8_t* out;
+  uint16_t len;
+  int moved = 0;
+
+  while (heap_scan_next(bp, &old_hf, &cur, &out, &len)) {
+    heap_insert(bp, &new_hf, out, len);
+    moved++;
+    bp_unpin_page(bp, cur.page_id, false);
+  }
+
+  if (!catalog_update_table_heap(bp, cat, tname, new_heap_h)) {
+    printf("VACUUM failed to update catalog.\nmarqdb> ");
+    return 0;
+  }
+
+  printf("OK (vacuumed %d rows into new heap)\nmarqdb> ", moved);
+  return moved;
+}
 
 // ============================================================================
 // REPL
@@ -614,11 +662,12 @@ void repl(BufferPool* bp) {
     
     if (strcmp(line, ".help") == 0) {
       printf("Commands:\n");
-      printf("  CREATE TABLE name (col1 TYPE1, col2 TYPE2, ...);\n");
-      printf("  INSERT INTO name VALUES (val1, val2, ...);\n");
-      printf("  SELECT * FROM name [WHERE col = value];\n");
-      printf("  UPDATE name SET col = value [WHERE col = value];\n");
-      printf("  DELETE FROM name WHERE col = value;\n");
+      printf("  CREATE TABLE <name> (col1 TYPE1, col2 TYPE2, ...);\n");
+      printf("  INSERT INTO <name> VALUES (val1, val2, ...);\n");
+      printf("  SELECT * FROM <name> [WHERE col = value];\n");
+      printf("  UPDATE <name> SET col = value [WHERE col = value];\n");
+      printf("  DELETE FROM <name> WHERE col = value;\n");
+      printf("  VACUUM <name>;\n");
       printf("  .exit / .quit  - Exit the database\n");
       printf("  .help          - Show this help message\n");
       continue;
@@ -635,6 +684,8 @@ void repl(BufferPool* bp) {
       sql_exec_update(bp, &cat, line);
     } else if (sql_starts_with(line, "delete")) {
       sql_exec_delete(bp, &cat, line);
+    } else if (sql_starts_with(line, "vacuum")) {
+      sql_exec_vacuum(bp, &cat, line);
     } else {
       printf("Unknown command. Type .help for available commands.\n");
     }

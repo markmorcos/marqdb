@@ -181,3 +181,33 @@ int catalog_load_schema(BufferPool* bp, const Catalog* c,
   }
   return found;
 }
+
+int catalog_update_table_heap(BufferPool* bp, const Catalog* c,
+                              const char* name, uint32_t new_heap_header_pid) {
+  if (c->catalog_heap_header_pid == INVALID_PID) return 0;
+  
+  HeapFile cat_hf = heap_open(bp, c->catalog_heap_header_pid);
+  RID cur = { .page_id = INVALID_PID, .slot_id = 0 };
+  uint8_t* out;
+  uint16_t len;
+
+  while (heap_scan_next(bp, &cat_hf, &cur, &out, &len)) {
+    if (len < sizeof(CatalogEntry)) {
+      bp_unpin_page(bp, cur.page_id, false);
+      continue;
+    }
+
+    CatalogEntry* e = (CatalogEntry*)out;
+    e->name[TABLE_NAME_MAX - 1] = 0;
+
+    if (strncmp(e->name, name, TABLE_NAME_MAX) == 0) {
+        e->heap_header_pid = new_heap_header_pid;
+        bp_unpin_page(bp, cur.page_id, true);
+        return 1;
+    }
+
+    bp_unpin_page(bp, cur.page_id, false);
+  }
+  
+  return 0;
+}
